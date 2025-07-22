@@ -4,6 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import re
+from sentence_transformers import SentenceTransformer
+import torch
+from scipy.spatial.distance import cosine
+
+# tiny 384‑dim model, ~22 MB
+dup_model = SentenceTransformer('all-MiniLM-L6-v2')
+dup_model.to(torch.device('cpu'))      # explicit is nice
+
 
 app = FastAPI(title="Mini‑Entangl")
 
@@ -68,6 +76,37 @@ def analyze_steps(steps: List[Step]) -> List[StepIssue]:
                         suggestion="Move this step after the generator/UPS start step",
                     )
                 )
+    issues.extend(find_duplicate_issues(steps))
+    return issues
+
+def find_duplicate_issues(steps: List[Step], threshold: float = 0.5) -> List[StepIssue]:
+    """
+    Use sentence embeddings to detect semantically identical steps.
+    threshold = cosine similarity above which we consider a duplicate.
+    """
+    texts = [s.raw for s in steps]
+    if len(texts) < 2:
+        return []
+
+    # 384‑D embeddings (torch.tensor on CPU)
+    emb = dup_model.encode(texts, convert_to_tensor=True, normalize_embeddings=True)
+
+    issues: List[StepIssue] = []
+    for i in range(1, len(steps)):
+        # compare step i with every earlier step j
+        sims = torch.matmul(emb[i], emb[:i].T)  # vector (i similarities)
+        # get the most similar previous step
+        j = int(torch.argmax(sims))
+        sim_val = float(sims[j])
+        print(f"dup‑sim: step {steps[i].number} vs {steps[j].number} = {sim_val:.3f}")
+        if sim_val >= threshold:
+            issues.append(
+                StepIssue(
+                    step_number=steps[i].number,
+                    description=f'Duplicate of step {steps[j].number} (cos sim {sim_val:.2f})',
+                    suggestion='Remove or merge one instance',
+                )
+            )
     return issues
 
 def apply_fixes(steps: List[Step], issues: List[StepIssue]) -> List[Step]:
@@ -95,7 +134,7 @@ def apply_fixes(steps: List[Step], issues: List[StepIssue]) -> List[Step]:
     for i, s in enumerate(reordered, 1):
         s.number = i
     return reordered
-    
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     """
