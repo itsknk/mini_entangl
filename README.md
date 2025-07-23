@@ -1,7 +1,7 @@
 
 # Mini‑Entangl
 
-[![CI](https://github.com/itsknk/mini-entangl/actions/workflows/ci.yml/badge.svg)](https://github.com/itsknk/mini-entangl/actions/workflows/ci.yml)
+[![CI](https://github.com/itsknk/mini_entangl/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/itsknk/mini_entangl/actions/workflows/ci.yml)
 
 
 **A tiny prototype showing how Entangl could detect _and_ auto‑remediate unsafe data‑center procedures.**  
